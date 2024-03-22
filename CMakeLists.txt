@@ -162,10 +162,17 @@ if(HNSWLIB_EXAMPLES)
             endif()
         endif()
     elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-        # We enable optimizations in all build types, even in Debug.
-        add_cxx_flags(
-            -Ofast -lrt -march=native -w -fopenmp -ftree-vectorize
-            -ftree-vectorizer-verbose=0)
+      add_cxx_flags(-Ofast -std=c++11 -DHAVE_CXX0X -fpic -w -fopenmp -ftree-vectorize -ftree-vectorizer-verbose=0)
+      if(CMAKE_SYSTEM_PROCESSOR MATCHES "ppc|powerpc")
+        add_cxx_flags(-mtune=native)
+        message("set -mtune=native flag")
+      else()
+        add_cxx_flags(-march=native)
+        message("set -march=native flag")
+      endif()
+      if(NOT APPLE)
+        add_cxx_flags(-lrt)
+      endif()
     elseif (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
         if (NOT HNSWLIB_ENABLE_EXCEPTIONS)
             # Do not enable exceptions by default. We will enable them on a
