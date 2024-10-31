@@ -7,6 +7,7 @@
 #include <stdlib.h>
 
 #include <atomic>
+#include <iostream>
 #include <limits>
 #include <list>
 #include <memory>
@@ -723,10 +724,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
         return size;
     }
 
-    Status saveIndexNoExceptions(const std::string &location) override {
-
-        std::ofstream output(location, std::ios::binary);
-
+    Status saveIndexNoExceptions(std::ostream &output) {
         writeBinaryPOD(output, offsetLevel0_);
         writeBinaryPOD(output, max_elements_);
         writeBinaryPOD(output, cur_element_count);
@@ -750,24 +748,22 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
             if (linkListSize)
                 output.write(linkLists_[i], linkListSize);
         }
+        return OkStatus();
+    }
+
+
+    Status saveIndexNoExceptions(const std::string &location) override {
+        std::ofstream output(location, std::ios::binary);
+        Status status = saveIndexNoExceptions(output);
+        if (!status.ok()) {
+            HNSWLIB_THROW_RUNTIME_ERROR(status.message());
+        }
         output.close();
         return OkStatus();
     }
 
 
-    void loadIndex(const std::string &location, SpaceInterface<dist_t> *s, size_t max_elements_i = 0) {
-        Status status = loadIndexNoExceptions(location, s, max_elements_i);
-        if (!status.ok()) {
-            HNSWLIB_THROW_RUNTIME_ERROR(status.message());
-        }
-    }
-
-    Status loadIndexNoExceptions(const std::string &location, SpaceInterface<dist_t> *s, size_t max_elements_i = 0) {
-        std::ifstream input(location, std::ios::binary);
-
-        if (!input.is_open())
-            return Status("Cannot open file");
-
+    Status loadIndexNoExceptions(std::istream &input, SpaceInterface<dist_t> *s, size_t max_elements_i = 0) {
         clear();
         // get file size:
         input.seekg(0, input.end);
@@ -865,10 +861,27 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
             }
         }
 
-        input.close();
-
         return OkStatus();
     }
+
+
+
+    void loadIndex(const std::string &location, SpaceInterface<dist_t> *s, size_t max_elements_i = 0) {
+        std::ifstream input(location, std::ios::binary);
+
+        if (!input.is_open())
+            HNSWLIB_THROW_RUNTIME_ERROR("Cannot open file");
+
+        Status status = loadIndexNoExceptions(input, s, max_elements_i);
+        if (!status.ok()) {
+            HNSWLIB_THROW_RUNTIME_ERROR(status.message());
+        }
+
+        input.close();
+
+        return;
+    }
+
 
     template<typename data_t>
     std::vector<data_t>
