@@ -2,16 +2,21 @@
 
 #include "visited_list_pool.h"
 #include "hnswlib.h"
-#include <atomic>
-#include <random>
-#include <stdlib.h>
+
 #include <assert.h>
-#include <unordered_set>
+#include <stdlib.h>
+
+#include <atomic>
+#include <limits>
 #include <list>
 #include <memory>
+#include <mutex>
+#include <random>
+#include <unordered_set>
 
 namespace hnswlib {
 typedef unsigned int tableint;
+constexpr tableint kInvalidInternalId = std::numeric_limits<tableint>::max();
 typedef unsigned int linklistsizeint;
 
 template<typename dist_t>
@@ -192,6 +197,17 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
         labeltype return_label;
         memcpy(&return_label, (data_level0_memory_ + internal_id * size_data_per_element_ + label_offset_), sizeof(labeltype));
         return return_label;
+    }
+
+
+    tableint getInternalIdByLabel(labeltype label) const {
+        std::lock_guard<std::mutex> lock_table(label_lookup_lock);
+        auto label_lookup_result = label_lookup_.find(label);
+        if (label_lookup_result == label_lookup_.end() ||
+            isMarkedDeleted(label_lookup_result->second)) {
+            return kInvalidInternalId;
+        }
+        return label_lookup_result->second;
     }
 
 
@@ -870,13 +886,10 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
         // lock all operations with element by label
         std::unique_lock <std::mutex> lock_label(getLabelOpMutex(label));
 
-        std::unique_lock <std::mutex> lock_table(label_lookup_lock);
-        auto search = label_lookup_.find(label);
-        if (search == label_lookup_.end() || isMarkedDeleted(search->second)) {
+        tableint internalId = getInternalIdByLabel(label);
+        if (internalId == kInvalidInternalId) {
             return Status("Label not found");
         }
-        tableint internalId = search->second;
-        lock_table.unlock();
 
         char* data_ptrv = getDataByInternalId(internalId);
         size_t dim = *((size_t *) dist_func_param_);
@@ -1190,7 +1203,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
     }
 
 
-    // This internal function adds a point at a specific level. If level is
+    // This internal function adds a point at a specific level.
     StatusOr<tableint> addPointWithLevel(const void *data_point, labeltype label, int level) {
         tableint cur_c = 0;
         {
